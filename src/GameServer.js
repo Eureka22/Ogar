@@ -34,6 +34,7 @@ function GameServer() {
 
     // Main loop tick
     this.time = new Date();
+    this.startTime = this.time;
     this.tick = 0; // 1 second ticks of mainLoop
     this.tickMain = 0; // 50 ms ticks, 20 of these = 1 leaderboard update
     this.tickSpawn = 0; // Used with spawning food
@@ -42,6 +43,7 @@ function GameServer() {
     this.config = { // Border - Right: X increases, Down: Y increases (as of 2015-05-20)
         serverMaxConnections: 64, // Maximum amount of connections to the server.
         serverPort: 443, // Server port
+        statusPort: 80, // Server status port
         serverGamemode: 0, // Gamemode, 0 = FFA, 1 = Teams
         serverBots: 0, // Amount of player bots to spawn
         serverBotsIgnoreViruses: false,
@@ -189,8 +191,9 @@ GameServer.prototype.start = function() {
         ws.on('error', close.bind(bindObject));
         ws.on('close', close.bind(bindObject));
         this.clients.push(ws);
-
     }
+    // start server status
+    this.serverStatus(this.config.statusPort);
 };
 
 GameServer.prototype.getMode = function() {
@@ -859,3 +862,41 @@ WebSocket.prototype.sendPacket = function(packet) {
     }
 };
 
+// Generate server status (json format)
+// You can now use agario mod
+GameServer.prototype.serverStatus = function(port) {
+    if (port < 1) {
+        return;
+    }
+
+    var starStatatusData = {
+        'current_players': 0,
+        'max_players': this.config.serverMaxConnections,
+        'gamemode': this.gameMode.name,
+        'start_time': this.startTime
+    };
+
+    this.stats = JSON.stringify(starStatatusData);
+
+    this.httpServer = http.createServer(function(req, res) {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.writeHead(200, {'Content-Type': 'application/json' });
+        res.end(this.stats);
+    }.bind(this));
+
+    this.httpServer.listen(port, function() {
+        console.log("[Game] Loaded stats server on port " + port);
+        setInterval(this.getStatus.bind(this), 60000); // Interval of refresh data
+    }.bind(this));
+}
+
+// Refresh statusData
+GameServer.prototype.getStatus = function() {
+    var statusData = {
+        'current_players': this.clients.length,
+        'max_players': this.config.serverMaxConnections,
+        'gamemode': this.gameMode.name,
+        'start_time': this.startTime
+    };
+    this.stats = JSON.stringify(statusData);
+};
